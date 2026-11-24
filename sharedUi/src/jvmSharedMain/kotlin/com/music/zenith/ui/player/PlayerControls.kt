@@ -2227,7 +2227,7 @@ internal fun QualityDetailPopup(
     val summary = stats.qualitySummary()
     PlayerPopup(
         hazeState = hazeState,
-        title = stringResource(if (stats.isHiRes) Res.string.hi_res_lossless else Res.string.lossless),
+        title = "",
         onDismiss = dismiss,
         modifier = modifier,
         titleGap = 2.dp,
@@ -2236,16 +2236,28 @@ internal fun QualityDetailPopup(
         anchorRect = state.anchor,
         onProgress = { state.progress = it },
         header = {
-            Box(
+            // Icon and label side by side, centred in the card.
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 8.dp, bottom = 12.dp),
+                    .padding(bottom = 4.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
+                ShimmerIcon(
                     painter = painterResource(Res.drawable.ic_lossless),
-                    contentDescription = null,
-                    tint = Color.White,
                     modifier = Modifier.size(width = 46.dp, height = 25.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = stringResource(if (stats.isHiRes) Res.string.hi_res_lossless else Res.string.lossless),
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = (-0.2).sp,
+                    ),
+                    color = Color.White,
+                    maxLines = 1,
                 )
             }
         },
@@ -2257,9 +2269,11 @@ internal fun QualityDetailPopup(
                 color = Color.White.copy(alpha = 0.7f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 8.dp, bottom = 10.dp),
+                    .padding(horizontal = 8.dp)
+                    .padding(bottom = 10.dp),
             )
         }
         rows.forEachIndexed { index, row ->
@@ -2301,6 +2315,56 @@ internal fun QualityDetailPopup(
             }
         }
     }
+}
+
+/**
+ * The quality glyph with the same highlight band as [ShimmerText] sweeping
+ * across it. The glyph is drawn once in a dimmed white and the band is painted
+ * over it in the draw phase with SrcIn, so a frame of the sweep recomposes
+ * nothing. Holds still under "Reduce animation".
+ */
+@Composable
+private fun ShimmerIcon(
+    painter: Painter,
+    modifier: Modifier = Modifier,
+) {
+    val reduceAnimation by PlayerSettings.reduceAnimation.collectAsStateWithLifecycle()
+    val progress = if (reduceAnimation) {
+        null
+    } else {
+        rememberInfiniteTransition(label = "quality-icon-shimmer").animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 2_400, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "quality-icon-shimmer-progress",
+        )
+    }
+    val baseColor = Color.White.copy(alpha = 0.55f)
+    Icon(
+        painter = painter,
+        contentDescription = null,
+        tint = Color.White,
+        modifier = modifier
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                val p = progress?.value ?: return@drawWithContent
+                val width = size.width
+                val band = width * 0.6f
+                val center = -band + p * (width + 2 * band)
+                drawRect(
+                    brush = Brush.linearGradient(
+                        colorStops = arrayOf(0f to baseColor, 0.5f to Color.White, 1f to baseColor),
+                        start = Offset(center - band, 0f),
+                        end = Offset(center + band, 0f),
+                    ),
+                    blendMode = BlendMode.SrcIn,
+                )
+            },
+    )
 }
 
 /**
