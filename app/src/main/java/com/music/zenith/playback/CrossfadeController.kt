@@ -904,7 +904,10 @@ class CrossfadeController(
         }
         manualFade = true
         manualForward = forward
-        armDeadline = SystemClock.elapsedRealtime() + SKIP_ARM_TIMEOUT_MS
+        // Direct Source Stream holds the next track until it is about to play,
+        // so its addon lookup only starts with this skip and takes seconds.
+        val wait = if (DirectSourceGate.isActive()) DIRECT_SKIP_ARM_TIMEOUT_MS else SKIP_ARM_TIMEOUT_MS
+        armDeadline = SystemClock.elapsedRealtime() + wait
         AppSettings.skipCrossfadeMs.value = fade
         return true
     }
@@ -4093,6 +4096,13 @@ class CrossfadeController(
          * automatic transition, someone is waiting on this button.
          */
         const val SKIP_ARM_TIMEOUT_MS = 400L
+
+        /**
+         * The same wait with Direct Source Stream on, where the next track is
+         * not resolved until it is about to play and an addon lookup takes
+         * seconds. The outgoing track keeps playing while this runs.
+         */
+        const val DIRECT_SKIP_ARM_TIMEOUT_MS = 4_000L
 
         /**
          * Where the outgoing low-pass sits the instant a filter ride begins.
