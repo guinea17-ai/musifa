@@ -63,8 +63,9 @@ fun ChartCountryButton(
     modifier: Modifier = Modifier,
 ) {
     val shape = CircleShape
-    val glass = LocalLiquidGlassEnabled.current && isGlassSupported()
-    val content = if (glass) glassContentColor() else MaterialTheme.colorScheme.onSurface
+    // Lives inside the page, which LocalAppBackdrop records: sampling it here
+    // would make the button draw itself. Fill plus rim only, like the Play pills.
+    val content = MaterialTheme.colorScheme.onSurface
     val bounds = remember { CountryButtonBounds() }
     Row(
         modifier = modifier
@@ -72,13 +73,8 @@ fun ChartCountryButton(
             .onGloballyPositioned { bounds.rect = it.boundsInWindow() }
             .glassJelly(GLASS_JELLY_PRESS_WIDE)
             .clip(shape)
-            .then(
-                if (glass) {
-                    Modifier.liquidGlass(shape, refract = false)
-                } else {
-                    Modifier.background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), shape)
-                },
-            )
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), shape)
+            .liquidGlassRim(shape)
             .border(GLASS_EDGE_WIDTH, GLASS_EDGE_COLOR, shape)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
