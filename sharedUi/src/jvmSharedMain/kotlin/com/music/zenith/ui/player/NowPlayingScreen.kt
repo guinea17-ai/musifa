@@ -1145,6 +1145,7 @@ fun NowPlayingScreen(
     val playerHaze = remember { HazeState() }
     var showAudioPipeline by remember { mutableStateOf(false) }
     var showCast by remember { mutableStateOf(false) }
+    var showQualityDetail by remember { mutableStateOf(false) }
     // Sheet offset lirik tetap tersusun sebentar setelah ditutup supaya animasi keluarnya sempat jalan.
     var lyricsOffsetSheetHeld by remember { mutableStateOf(lyricsOffsetOpen) }
     LaunchedEffect(lyricsOffsetOpen) {
@@ -1460,6 +1461,7 @@ fun NowPlayingScreen(
     val overlayOpen = remember {
         derivedStateOf {
             currentMenuOpen() || showAudioPipeline || showCast || showAudioOutput || showVideoQuality ||
+                showQualityDetail ||
                 showLyricsProviders || showListenTogetherMembers || lyricsShare != null || currentLyricsOffsetOpen
         }
     }
@@ -2208,6 +2210,12 @@ fun NowPlayingScreen(
     // whichever layout is on screen, by [FrostedPlayerFrame] — they are
     // overlays over the player, not part of any shape of it.
     val playerOverlays: @Composable () -> Unit = {
+        if (showQualityDetail) {
+            QualityDetailPopup(
+                hazeState = playerHaze,
+                onDismiss = { showQualityDetail = false },
+            )
+        }
         if (showVideoQuality) {
             VideoQualitySheet(
                 hazeState = playerHaze,
@@ -2622,6 +2630,7 @@ fun NowPlayingScreen(
         live = liveBackdropOn,
         // Not the host's ⋯ menu: that takes its own still, of everything.
         overlayOpen = { overlayOpen.value && !currentMenuOpen() },
+        onOpenQualityDetail = { showQualityDetail = true },
         overlays = playerOverlays,
     ) {
         if (landscape && videoMode) {

@@ -90,6 +90,10 @@ internal fun PlayerPopup(
     modifier: Modifier = Modifier,
     /** Air between the title and whatever the popup opens with. */
     titleGap: Dp = 14.dp,
+    /** The widest the card grows; the full-width popups keep the default. */
+    maxWidth: Dp = POPUP_MAX_WIDTH,
+    /** Drawn above the title, for a popup that opens with a logo. */
+    header: (@Composable ColumnScope.() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val reduceDynamicBlur by PlayerSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
@@ -174,7 +178,7 @@ internal fun PlayerPopup(
     ) {
         Column(
             modifier = Modifier
-                .widthIn(max = POPUP_MAX_WIDTH)
+                .widthIn(max = maxWidth)
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
                 .heightIn(max = 560.dp)
@@ -242,6 +246,7 @@ internal fun PlayerPopup(
                     .padding(start = 14.dp, end = 14.dp, top = 20.dp, bottom = 14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                header?.invoke(this)
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleLarge.copy(

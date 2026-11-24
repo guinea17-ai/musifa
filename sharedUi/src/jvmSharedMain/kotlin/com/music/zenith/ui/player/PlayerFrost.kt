@@ -74,6 +74,8 @@ internal fun FrostedPlayerFrame(
     live: Boolean,
     /** Read off composition, so a panel opening recomposes nothing here. */
     overlayOpen: () -> Boolean,
+    /** Opens the audio quality card from the badge; null where there is none. */
+    onOpenQualityDetail: (() -> Unit)? = null,
     overlays: @Composable () -> Unit,
     content: @Composable () -> Unit,
 ) {
@@ -91,7 +93,10 @@ internal fun FrostedPlayerFrame(
             }
         }
     }
-    CompositionLocalProvider(LocalPlayerTint provides tint) {
+    CompositionLocalProvider(
+        LocalPlayerTint provides tint,
+        LocalQualityDetailOpener provides onOpenQualityDetail,
+    ) {
         Box(modifier.fillMaxSize().recordPopupOrigin()) {
             val source = if (frost != null) with(frost) { Modifier.frostSource() } else Modifier
             Box(Modifier.fillMaxSize().then(source)) {
