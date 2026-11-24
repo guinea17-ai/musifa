@@ -3737,7 +3737,12 @@ fun NowPlayingScreen(
                             .background(
                                 Brush.verticalGradient(
                                     0.00f to Color.Transparent,
-                                    0.45f to Color.Black.copy(alpha = SPOTIFY_HIDDEN_SCRIM_MAX_ALPHA * 0.45f),
+                                    0.12f to Color.Black.copy(alpha = SPOTIFY_HIDDEN_SCRIM_MAX_ALPHA * 0.03f),
+                                    0.25f to Color.Black.copy(alpha = SPOTIFY_HIDDEN_SCRIM_MAX_ALPHA * 0.12f),
+                                    0.40f to Color.Black.copy(alpha = SPOTIFY_HIDDEN_SCRIM_MAX_ALPHA * 0.28f),
+                                    0.55f to Color.Black.copy(alpha = SPOTIFY_HIDDEN_SCRIM_MAX_ALPHA * 0.48f),
+                                    0.72f to Color.Black.copy(alpha = SPOTIFY_HIDDEN_SCRIM_MAX_ALPHA * 0.72f),
+                                    0.88f to Color.Black.copy(alpha = SPOTIFY_HIDDEN_SCRIM_MAX_ALPHA * 0.90f),
                                     1.00f to Color.Black.copy(alpha = SPOTIFY_HIDDEN_SCRIM_MAX_ALPHA),
                                 ),
                             ),
