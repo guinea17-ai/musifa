@@ -133,6 +133,12 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import dev.chrisbanes.haze.HazeState
 
 /**
@@ -2065,18 +2071,27 @@ private fun LosslessLabel(
 }
 
 /** The quality card is a compact card, not the full-width popup. */
-private val QUALITY_POPUP_WIDTH = 288.dp
+private val QUALITY_POPUP_WIDTH = 300.dp
 private val QUALITY_ROW_HEIGHT = 40.dp
 
 /** One label/value line of the quality card. */
 private class QualityRow(val label: String, val value: String)
 
 /**
- * Opens the quality card from the badge. Provided by [FrostedPlayerFrame],
- * which also hosts the card; null where there is no popup layer, and the badge
- * then simply isn't tappable.
+ * What the badge and the quality card share. The card is the badge grown, so it
+ * needs the badge's bounds to start from ([anchor]), and the badge needs to know
+ * how far open the card is ([progress]) to fade out under it and back in as the
+ * card folds away. Provided by [FrostedPlayerFrame], which also hosts the card;
+ * null where there is no popup layer, and the badge then isn't tappable.
  */
-internal val LocalQualityDetailOpener = compositionLocalOf<(() -> Unit)?> { null }
+@Stable
+internal class QualityDetailState {
+    var open by mutableStateOf(false)
+    var anchor by mutableStateOf<Rect?>(null)
+    var progress by mutableFloatStateOf(0f)
+}
+
+internal val LocalQualityDetail = compositionLocalOf<QualityDetailState?> { null }
 
 private fun NerdStats.Snapshot.rateLabel(): String? = sampleRateHz?.let {
     NerdStats.megahertzLabel(it) ?: "%.1f kHz".format(Locale.ROOT, it / 1000f)
@@ -2125,9 +2140,12 @@ private fun NerdStats.Snapshot.qualityRows(): List<QualityRow> = buildList {
 }
 
 /**
- * The Lossless / Hi-Res Lossless chip. A tap hands over to [QualityDetailPopup],
- * which grows out of the touch point like the player's other popups. The chip
- * itself only gives a small jelly press, and holds still under "Reduce animation".
+ * The Lossless / Hi-Res Lossless chip. A tap grows this very box into the
+ * quality card: [QualityDetailPopup] starts from the chip's own bounds, so it
+ * reads as one surface growing rather than a card appearing beside it. The
+ * chip's label fades out under the growing card and back in as it folds away.
+ * Otherwise the chip only gives a small jelly press, and holds still under
+ * "Reduce animation".
  */
 @Composable
 private fun QualityMorphChip(
@@ -2135,7 +2153,7 @@ private fun QualityMorphChip(
     iconPainter: Painter,
     modifier: Modifier = Modifier,
 ) {
-    val openDetail = LocalQualityDetailOpener.current
+    val detail = LocalQualityDetail.current
     val reduceAnimation by PlayerSettings.reduceAnimation.collectAsStateWithLifecycle()
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -2145,23 +2163,27 @@ private fun QualityMorphChip(
         label = "qualityChipPress",
     )
     val detailsLabel = stringResource(Res.string.quality_info_details)
+    var coords by remember { mutableStateOf<LayoutCoordinates?>(null) }
     Box(
         modifier = modifier
             // Measured without a height cap, same as the plain chip, so the
-            // touch target is the chip's real size.
+            // bounds the card grows from are the chip's real size.
             .wrapContentHeight(align = Alignment.CenterVertically, unbounded = true)
+            .onGloballyPositioned { coords = it }
             .graphicsLayer {
                 scaleX = pressScale
                 scaleY = pressScale
+                val d = detail
+                alpha = if (d == null || !d.open) 1f else (1f - d.progress * 8f).coerceIn(0f, 1f)
             }
             .semantics { contentDescription = detailsLabel }
             .then(
-                if (openDetail != null) {
-                    Modifier.clickable(
-                        interactionSource = interaction,
-                        indication = null,
-                        onClick = openDetail,
-                    )
+                if (detail != null) {
+                    Modifier.clickable(interactionSource = interaction, indication = null) {
+                        coords?.takeIf { it.isAttached }?.let { detail.anchor = it.boundsInWindow() }
+                        detail.progress = 0f
+                        detail.open = true
+                    }
                 } else {
                     Modifier
                 },
@@ -2178,22 +2200,26 @@ private fun QualityMorphChip(
 
 /**
  * The quality card: logo, title, summary and the measured spec rows. A
- * [PlayerPopup], so it is the same material and motion as the ⋯ menu's
- * popups: frosted over a still of the player, grown out of the badge that was
- * touched, resting just above it, and leaning under a finger on a loose spring.
+ * [PlayerPopup] grown out of the badge's own bounds, so it is the same material
+ * and motion as the ⋯ menu's popups: frosted over a still of the player, with
+ * the menu's jelly under a dragging finger, resting on the badge's bottom edge.
  *
  * Closes itself if the stream stops being lossless underneath it, such as on a
  * track change, rather than keep describing a stream that is gone.
  */
 @Composable
 internal fun QualityDetailPopup(
+    state: QualityDetailState,
     hazeState: HazeState,
-    onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val latest by NerdStats.current.collectAsStateWithLifecycle()
+    val dismiss: () -> Unit = {
+        state.open = false
+        state.progress = 0f
+    }
     LaunchedEffect(latest?.isLossless) {
-        if (latest?.isLossless != true) onDismiss()
+        if (latest?.isLossless != true) dismiss()
     }
     val stats = latest?.takeIf { it.isLossless } ?: return
     val rows = stats.qualityRows()
@@ -2201,11 +2227,13 @@ internal fun QualityDetailPopup(
     PlayerPopup(
         hazeState = hazeState,
         title = stringResource(if (stats.isHiRes) Res.string.hi_res_lossless else Res.string.lossless),
-        onDismiss = onDismiss,
+        onDismiss = dismiss,
         modifier = modifier,
         titleGap = 2.dp,
         maxWidth = QUALITY_POPUP_WIDTH,
         menuJelly = true,
+        anchorRect = state.anchor,
+        onProgress = { state.progress = it },
         header = {
             Box(
                 modifier = Modifier
@@ -2247,7 +2275,8 @@ internal fun QualityDetailPopup(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp)
-                    .height(QUALITY_ROW_HEIGHT),
+                    .heightIn(min = QUALITY_ROW_HEIGHT)
+                    .padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -2257,12 +2286,14 @@ internal fun QualityDetailPopup(
                     maxLines = 1,
                 )
                 Spacer(Modifier.width(12.dp))
+                // A long value, such as a source name, wraps to a second line
+                // instead of being cut off.
                 Text(
                     text = row.value,
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                     color = Color.White,
                     textAlign = TextAlign.End,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )

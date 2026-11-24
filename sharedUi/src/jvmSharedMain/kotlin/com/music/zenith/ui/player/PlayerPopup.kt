@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -97,6 +98,14 @@ internal fun PlayerPopup(
     header: (@Composable ColumnScope.() -> Unit)? = null,
     /** Drags the card with the ⋯ menu's jelly instead of the plain lean. */
     menuJelly: Boolean = false,
+    /**
+     * The bounds, in window space, of the button this card is the grown form of.
+     * It grows out of exactly that box and rests on its bottom edge, instead of
+     * growing from the finger's point.
+     */
+    anchorRect: Rect? = null,
+    /** Told how far open the card is, on every frame of its motion. */
+    onProgress: ((Float) -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val reduceDynamicBlur by PlayerSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
@@ -122,13 +131,21 @@ internal fun PlayerPopup(
         }
     }
     val close: () -> Unit = { closing = true }
+    LaunchedEffect(Unit) {
+        snapshotFlow { progress.value }.collect { onProgress?.invoke(it) }
+    }
     PlayerBackHandler(enabled = !closing) { close() }
 
     var card by remember { mutableStateOf(Rect.Zero) }
     var overlayBottom by remember { mutableFloatStateOf(0f) }
 
     // Rests just above the button it grew out of, rather than floating mid-screen.
-    val bottomGap = if (origin != null && overlayBottom > 0f) {
+    val bottomGap = if (anchorRect != null && overlayBottom > 0f) {
+        // On the grown button's bottom edge: the card rises from it.
+        with(density) {
+            (overlayBottom - anchorRect.bottom).coerceIn(16.dp.toPx(), 360.dp.toPx()).toDp()
+        }
+    } else if (origin != null && overlayBottom > 0f) {
         with(density) {
             (overlayBottom - (origin.y - POPUP_ORIGIN_SIZE.toPx() / 2f) + POPUP_ANCHOR_GAP.toPx())
                 .coerceIn(16.dp.toPx(), 360.dp.toPx())
@@ -178,7 +195,7 @@ internal fun PlayerPopup(
                 onClick = close,
             )
             .statusBarsPadding()
-            .then(if (origin == null) Modifier.navigationBarsPadding() else Modifier)
+            .then(if (origin == null && anchorRect == null) Modifier.navigationBarsPadding() else Modifier)
             .padding(top = 24.dp, bottom = bottomGap),
         contentAlignment = Alignment.BottomCenter,
     ) {
@@ -199,7 +216,9 @@ internal fun PlayerPopup(
                         return@graphicsLayer
                     }
                     val half = POPUP_ORIGIN_SIZE.toPx() / 2f
-                    val from = if (origin != null) {
+                    val from = if (anchorRect != null) {
+                        anchorRect
+                    } else if (origin != null) {
                         Rect(origin.x - half, origin.y - half, origin.x + half, origin.y + half)
                     } else {
                         Rect(b.center.x - half, b.bottom - half * 2f, b.center.x + half, b.bottom)
