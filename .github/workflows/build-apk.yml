@@ -97,7 +97,7 @@ jobs:
           chmod +x gradlew
           # Ulangi sampai 3 kali: unduhan dependensi native (libusb) kadang gagal sementara.
           n=0
-          until ./gradlew :app:assembleProdRelease --parallel --build-cache --stacktrace \
+          until ./gradlew :app:assembleDevRelease --parallel --build-cache --stacktrace \
             -Dorg.gradle.jvmargs="-Xmx5g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" 2>&1 | tee build-full.log; do
             n=$((n + 1))
             if [ "$n" -ge 3 ]; then
@@ -134,7 +134,7 @@ jobs:
             VER="build-$GITHUB_RUN_NUMBER"
           fi
           mkdir -p dist
-          cp app/build/outputs/apk/prod/release/*.apk "dist/Zenith-${VER}.apk"
+          cp app/build/outputs/apk/dev/release/*.apk "dist/Zenith-${VER}.apk"
           ls -lh dist
 
       - name: Publish GitHub Release
