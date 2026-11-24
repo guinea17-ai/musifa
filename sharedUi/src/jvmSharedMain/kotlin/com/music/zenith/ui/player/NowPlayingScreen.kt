@@ -1807,8 +1807,10 @@ fun NowPlayingScreen(
     // Frame terakhir klip saat lirik/queue dibuka. Hanya jadi sumber warna mesh
     // legacy di belakang panel; klip sendiri sudah berhenti pada frame itu.
     var canvasPanelFrame by remember(canvas?.url) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(lyricsOpen || queueOpen, canvas?.url) {
-        if (!(lyricsOpen || queueOpen)) return@LaunchedEffect
+    // Ikut queueDragging: saat antrean masih ditarik jari, panel belum "open",
+    // tapi alas blur frame beku sudah harus ada di bawah klip yang memudar.
+    LaunchedEffect(lyricsOpen || queueOpen || queueDragging, canvas?.url) {
+        if (!(lyricsOpen || queueOpen || queueDragging)) return@LaunchedEffect
         // Ambil frame terakhir klip langsung saat panel dibuka. Bila pembaca belum
         // siap, mengembalikan null, atau yang terbaca masih frame hitam (surface baru
         // dibuat ulang), coba lagi di frame berikutnya, bukan menyerah dan membiarkan
@@ -1832,8 +1834,8 @@ fun NowPlayingScreen(
     }
     // Frame beku dibuang saat player diam tanpa panel, supaya buka panel/geser
     // antrean berikutnya tidak memakai frame basi dari sesi sebelumnya.
-    LaunchedEffect(collapseAtRest, lyricsOpen, queueOpen) {
-        if (collapseAtRest && !lyricsOpen && !queueOpen) canvasPanelFrame = null
+    LaunchedEffect(collapseAtRest, lyricsOpen, queueOpen, queueDragging) {
+        if (collapseAtRest && !lyricsOpen && !queueOpen && !queueDragging) canvasPanelFrame = null
     }
     // Bentuk klip hero yang sedang tampil; diisi tiap komposisi di bawah (setelah
     // clipFadeFraction), dibaca saat skip menahan frame-nya.
