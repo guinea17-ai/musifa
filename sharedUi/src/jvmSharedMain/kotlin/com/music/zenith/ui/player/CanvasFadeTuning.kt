@@ -90,15 +90,26 @@ object CanvasFadeTuning {
         ControlLayoutTuning.clearOverrides()
     }
 
-    /** Nilai canvas saat sampul layar penuh aktif: tetap pakai setelan lama. */
+    /** Default Tinggi dan Geser Y saat sampul layar penuh aktif (setelan lama). */
     const val FULL_BLEED_HEIGHT_SCALE = 0.52f
     const val FULL_BLEED_OFFSET_DP = 80f
 
     /** Sampul layar penuh aktif? Dipasang oleh NowPlayingScreen. */
     val fullBleed = mutableStateOf(false)
 
-    /** Geser band fade efektif: setelan lama saat sampul layar penuh aktif. */
-    fun offset(): Float = if (fullBleed.value) FULL_BLEED_OFFSET_DP else offsetDp.floatValue
+    /** Tinggi dan Geser Y khusus mode sampul layar penuh; disetel lewat panel debug. */
+    val heightScaleFull = mutableFloatStateOf(FULL_BLEED_HEIGHT_SCALE)
+    val offsetDpFull = mutableFloatStateOf(FULL_BLEED_OFFSET_DP)
+
+    /** State Tinggi dan Geser Y yang aktif sesuai mode sampul layar penuh. */
+    fun activeHeight(): androidx.compose.runtime.MutableFloatState =
+        if (fullBleed.value) heightScaleFull else heightScale
+
+    fun activeOffset(): androidx.compose.runtime.MutableFloatState =
+        if (fullBleed.value) offsetDpFull else offsetDp
+
+    /** Geser band fade efektif sesuai mode. */
+    fun offset(): Float = activeOffset().floatValue
 
     const val DEFAULT_HEIGHT_SCALE = 0.40f
     const val DEFAULT_CURVE = 0.06f
@@ -130,6 +141,8 @@ object CanvasFadeTuning {
         curve.floatValue = DEFAULT_CURVE
         power.floatValue = DEFAULT_POWER
         offsetDp.floatValue = DEFAULT_OFFSET_DP
+        heightScaleFull.floatValue = FULL_BLEED_HEIGHT_SCALE
+        offsetDpFull.floatValue = FULL_BLEED_OFFSET_DP
         curveExp.floatValue = DEFAULT_CURVE_EXP
         blurScale.floatValue = DEFAULT_BLUR_SCALE
     }
@@ -145,8 +158,7 @@ object CanvasFadeTuning {
     }
 
     /** Tinggi fade efektif yang dipakai klip. */
-    fun effectiveHeight(): Float =
-        fastCurve(if (fullBleed.value) FULL_BLEED_HEIGHT_SCALE else heightScale.floatValue, 2f)
+    fun effectiveHeight(): Float = fastCurve(activeHeight().floatValue, 2f)
 
     /** Lekuk V efektif yang dipakai klip. */
     fun effectiveCurve(): Float = fastCurve(curve.floatValue, 3f)
@@ -158,6 +170,7 @@ object CanvasFadeTuning {
             curve.floatValue,
             power.floatValue,
             offset(),
+            heightScaleFull.floatValue,
             curveExp.floatValue,
             blurScale.floatValue,
             fullBleed.value,
@@ -335,6 +348,8 @@ internal object ControlLayoutTuning {
         appendLine("== Canvas fade (jadikan DEFAULT_* di CanvasFadeTuning) ==")
         appendLine("DEFAULT_HEIGHT_SCALE = ${fmt(CanvasFadeTuning.heightScale.floatValue)}f")
         appendLine("DEFAULT_OFFSET_DP = ${fmt(CanvasFadeTuning.offsetDp.floatValue)}f")
+        appendLine("FULL_BLEED_HEIGHT_SCALE = ${fmt(CanvasFadeTuning.heightScaleFull.floatValue)}f")
+        appendLine("FULL_BLEED_OFFSET_DP = ${fmt(CanvasFadeTuning.offsetDpFull.floatValue)}f")
         appendLine("DEFAULT_CURVE = ${fmt(CanvasFadeTuning.curve.floatValue)}f")
         appendLine("DEFAULT_CURVE_EXP = ${fmt(CanvasFadeTuning.curveExp.floatValue)}f")
         appendLine("DEFAULT_POWER = ${fmt(CanvasFadeTuning.power.floatValue)}f")
@@ -453,7 +468,7 @@ private fun DebugTunerPanel(
         }
     }
     val summary = if (tab == DebugTab.CANVAS) {
-        "T ${fmt(CanvasFadeTuning.heightScale.floatValue)} Y ${fmt(CanvasFadeTuning.offsetDp.floatValue)} " +
+        "T ${fmt(CanvasFadeTuning.activeHeight().floatValue)} Y ${fmt(CanvasFadeTuning.activeOffset().floatValue)} " +
             "C ${fmt(CanvasFadeTuning.curve.floatValue)} E ${fmt(CanvasFadeTuning.curveExp.floatValue)} " +
             "P ${fmt(CanvasFadeTuning.power.floatValue)} B ${fmt(CanvasFadeTuning.blurScale.floatValue)}"
     } else {
@@ -564,15 +579,19 @@ private fun SegmentedTabs(selected: DebugTab, onSelect: (DebugTab) -> Unit) {
 
 @Composable
 private fun CanvasTab(canvasActive: Boolean) {
-    val height = CanvasFadeTuning.heightScale
+    val height = CanvasFadeTuning.activeHeight()
     val curve = CanvasFadeTuning.curve
     val power = CanvasFadeTuning.power
-    val offset = CanvasFadeTuning.offsetDp
+    val offset = CanvasFadeTuning.activeOffset()
     val curveExp = CanvasFadeTuning.curveExp
     val blurScale = CanvasFadeTuning.blurScale
     if (!canvasActive) {
         Caption("Klip Canvas tidak tampil di lagu ini. Nilai tetap bisa disetel dan dipakai saat klip muncul.")
     }
+    Caption(
+        if (CanvasFadeTuning.fullBleed.value) "Mode: sampul layar penuh ON (Tinggi dan Geser Y khusus mode ini)"
+        else "Mode: sampul layar penuh OFF (Tinggi dan Geser Y khusus mode ini)",
+    )
     val keepPlaying = CanvasFadeTuning.keepPlayingWhileDocking
     SwitchRow("Klip tetap jalan saat player bergerak (logika lama)", keepPlaying.value) { keepPlaying.value = it }
     TunerRow("Tinggi (batas blur)", height.floatValue, 0f..2.0f, 0.01f) { height.floatValue = it }
