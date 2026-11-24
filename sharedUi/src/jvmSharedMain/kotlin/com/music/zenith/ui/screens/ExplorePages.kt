@@ -60,6 +60,7 @@ import com.music.zenith.ui.components.MessageState
 import com.music.zenith.ui.components.PAGE_GUTTER
 import com.music.zenith.ui.components.feedSkeleton
 import com.music.zenith.ui.components.instantPressClickable
+import androidx.compose.ui.geometry.Rect
 
 /** The countries YouTube Music publishes charts for; "ZZ" is Global. */
 val CHART_COUNTRY_CODES: List<String> = listOf(
@@ -72,6 +73,18 @@ val CHART_COUNTRY_CODES: List<String> = listOf(
 
 internal fun chartCountryName(code: String): String =
     if (code == "ZZ") "Global" else java.util.Locale("", code).displayCountry.ifBlank { code }
+
+/** One row of the Charts country list. */
+data class ChartCountryOption(val code: String, val name: String)
+
+/** The Charts country list for a popup: Global first, then the rest alphabetically. */
+fun chartCountryOptions(): List<ChartCountryOption> {
+    val rest = CHART_COUNTRY_CODES
+        .filter { it != "ZZ" }
+        .map { ChartCountryOption(it, chartCountryName(it)) }
+        .sortedBy { it.name }
+    return listOf(ChartCountryOption("ZZ", chartCountryName("ZZ"))) + rest
+}
 
 /** New releases, Charts and Moods & genres as three square cards, laid out at the foot of the New tab. */
 @Composable
@@ -238,6 +251,10 @@ fun ChartsPage(
     isPlaying: Boolean,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
+    /** Draws the country opener in place of the built-in pill; used together with [onCountryMenu]. */
+    countryButton: (@Composable (label: String, onClick: (Rect) -> Unit) -> Unit)? = null,
+    /** Asked to open the country popup from the opener's bounds; the host draws the popup. */
+    onCountryMenu: ((Rect) -> Unit)? = null,
 ) {
     LaunchedEffect(Unit) { onLoad() }
     var picking by remember { mutableStateOf(false) }
@@ -247,7 +264,15 @@ fun ChartsPage(
         modifier = modifier.fillMaxSize(),
     ) {
         item(key = "charts-country") {
-            Row(
+            if (countryButton != null && onCountryMenu != null) {
+                Box(
+                    Modifier
+                        .padding(horizontal = PAGE_GUTTER)
+                        .padding(top = 8.dp, bottom = 22.dp),
+                ) {
+                    countryButton(chartCountryName(country), onCountryMenu)
+                }
+            } else Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .padding(horizontal = PAGE_GUTTER)
@@ -283,7 +308,7 @@ fun ChartsPage(
             isPlaying = isPlaying,
         )
     }
-    if (picking) {
+    if (picking && (countryButton == null || onCountryMenu == null)) {
         ChartCountrySheet(
             selected = country,
             onPick = { code ->

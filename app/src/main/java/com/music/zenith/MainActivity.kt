@@ -154,6 +154,8 @@ import com.music.zenith.ui.AddonBlockedAlert
 import com.music.zenith.data.settings.LibrarySort
 import com.music.zenith.data.settings.ThemeMode
 import com.music.zenith.ui.components.AccountProfileSelector
+import com.music.zenith.ui.components.ChartCountryButton
+import com.music.zenith.ui.components.ChartCountryMenu
 import com.music.zenith.ui.components.JellyMenuBody
 import com.music.zenith.ui.components.iosMenuJelly
 import com.music.zenith.ui.components.jellyMenuRow
@@ -1009,6 +1011,10 @@ private fun ZenithApp(
     // Menu sumber (YouTube / Library / Addons) yang diminta globe di bar pencarian.
     // Digambar di root, di luar Column bar, supaya tidak memakan layout bar.
     var searchSourceMenu by remember { mutableStateOf<SourceMenuRequest?>(null) }
+    // Popup negara Charts: tombol pembukanya melapor batasnya, popup digambar di root
+    // supaya menutupi seluruh layar dan frost-nya memakai still halaman.
+    var chartCountryMenuOpen by remember { mutableStateOf(false) }
+    var chartCountryMenuAnchor by remember { mutableStateOf<Rect?>(null) }
     // Whether the field opened out of the collapsed (inline) nav bar, and how far
     // the bar has opened: the mini player rises and widens on that same spring.
     var searchFromInline by remember { mutableStateOf(false) }
@@ -3436,6 +3442,13 @@ private fun ZenithApp(
                                 onLoad = { viewModel.loadCharts() },
                                 onRetry = { viewModel.loadCharts(force = true) },
                                 onCountryChange = { viewModel.loadCharts(it) },
+                                countryButton = { label, onClick ->
+                                    ChartCountryButton(label = label, onClick = onClick)
+                                },
+                                onCountryMenu = { anchor ->
+                                    chartCountryMenuAnchor = anchor
+                                    chartCountryMenuOpen = true
+                                },
                                 onShelfItemClick = onExploreShelfClick,
                                 onShelfItemLongPress = onShelfLongPress,
                                 currentSong = player.song,
@@ -5199,7 +5212,8 @@ private fun ZenithApp(
                 (songActions != null && songMenuOrigin == null && !((menuFromPlayer || menuFromQueue) && playerRaised)) ||
                     (browseActions != null && browseMenuOrigin == null && !browseRenameInSheet) ||
                     songInfoTarget != null ||
-                    searchSourceMenu != null
+                    searchSourceMenu != null ||
+                    chartCountryMenuOpen
             LaunchedEffect(pageMenuUp, reduceDynamicBlur) {
                 if (pageMenuUp && !reduceDynamicBlur && isGlassSupported()) {
                     pageBackdrop.capture()
@@ -5880,6 +5894,19 @@ private fun ZenithApp(
             ) { song ->
                 songMenuBody(song)
             }
+            // Popup negara Charts: tumbuh dari tombolnya, frosted, dengan jelly drag.
+            ChartCountryMenu(
+                open = chartCountryMenuOpen,
+                anchor = chartCountryMenuAnchor,
+                selected = chartsCountry,
+                onPick = { code ->
+                    chartCountryMenuOpen = false
+                    if (code != chartsCountry) viewModel.loadCharts(code)
+                },
+                onDismiss = { chartCountryMenuOpen = false },
+                backdrop = pageBackdrop,
+                hazeState = hazeState,
+            )
             // Menu sumber pencarian dari globe di bar kaca: sibling layar penuh di atas
             // bar (bukan anak Column bar), frost dari still halaman seperti menu ⋯ lain.
             IosMenuPopover(
