@@ -133,6 +133,20 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 
 /**
  * "Playing from …", "Played by …" or the radio station — what the player is
@@ -1942,6 +1956,8 @@ private fun LosslessOrStats(
             animated = true,
             // Lossless and Hi-Res Lossless sit in a chip, as in Apple Music.
             chip = true,
+            // Tapping the chip opens the measured stream details.
+            detail = nerdStats,
             modifier = modifier,
         )
         nerdStats?.isDolbyAtmos == true || dolbyAtmosActive -> LosslessLabel(
@@ -1980,7 +1996,18 @@ private fun LosslessLabel(
     iconSize: Dp = Dp.Unspecified,
     /** Wraps the label in a small rounded chip tinted by the player tint. */
     chip: Boolean = false,
+    /** When set together with [chip], the chip opens into the quality detail card. */
+    detail: NerdStats.Snapshot? = null,
 ) {
+    if (chip && detail != null) {
+        QualityMorphChip(
+            text = text,
+            iconPainter = iconPainter,
+            stats = detail,
+            modifier = modifier,
+        )
+        return
+    }
     // Only while asked for, and not at all under "Reduce animation": the
     // label then just holds still, which says "waiting" well enough.
     val reduceAnimation by PlayerSettings.reduceAnimation.collectAsStateWithLifecycle()
@@ -2048,6 +2075,464 @@ private fun LosslessLabel(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+    }
+}
+
+/** The quality card has a fixed size, so the morph always knows where it ends. */
+private val QUALITY_CARD_WIDTH = 296.dp
+private val QUALITY_CARD_HEADER = 138.dp
+private val QUALITY_CARD_ROW = 36.dp
+private val QUALITY_CARD_FOOT = 14.dp
+
+/** Room around the card for the jelly overshoot and the glow. */
+private val QUALITY_CARD_BLEED = 36.dp
+
+/** One label/value line of the quality card. */
+private class QualityRow(val label: String, val value: String)
+
+/** Corner radius that follows the morph, read at draw time so it never recomposes. */
+private class MorphShape(
+    private val startPx: Float,
+    private val endPx: Float,
+    private val progress: () -> Float,
+) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        val r = androidx.compose.ui.util.lerp(startPx, endPx, progress().coerceIn(0f, 1f))
+            .coerceAtMost(minOf(size.width, size.height) / 2f)
+        return Outline.Rounded(RoundRect(0f, 0f, size.width, size.height, CornerRadius(r, r)))
+    }
+}
+
+/**
+ * Centres the card on the chip. [onOrigin] gets how far the chip's centre sits
+ * from the card's centre, so the surface can start on the chip and travel to
+ * the middle of the window as it grows.
+ */
+private class QualityPopupPosition(
+    private val onOrigin: (IntOffset) -> Unit,
+) : PopupPositionProvider {
+    private var last: IntOffset? = null
+
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize,
+    ): IntOffset {
+        val x = (anchorBounds.center.x - popupContentSize.width / 2)
+            .coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0))
+        val y = (anchorBounds.center.y - popupContentSize.height / 2)
+            .coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0))
+        val delta = IntOffset(
+            anchorBounds.center.x - (x + popupContentSize.width / 2),
+            anchorBounds.center.y - (y + popupContentSize.height / 2),
+        )
+        if (delta != last) {
+            last = delta
+            onOrigin(delta)
+        }
+        return IntOffset(x, y)
+    }
+}
+
+private fun NerdStats.Snapshot.rateLabel(): String? = sampleRateHz?.let {
+    NerdStats.megahertzLabel(it) ?: "%.1f kHz".format(Locale.ROOT, it / 1000f)
+}
+
+/** "44.1 kHz FLAC", or "24-bit/96 kHz FLAC" once it is past CD quality. */
+@Composable
+private fun NerdStats.Snapshot.qualitySummary(): String {
+    val depth = bitDepth?.let { stringResource(Res.string.bit_depth, it) }
+    val rate = rateLabel()
+    val resolution = if (isHiRes && depth != null && rate != null) "$depth/$rate" else rate
+    return listOfNotNull(resolution, codecLabel(mimeType)).joinToString(" ")
+}
+
+/** The rows of the card. A figure the player has not reported is left out. */
+@Composable
+private fun NerdStats.Snapshot.qualityRows(): List<QualityRow> = buildList {
+    sourceName?.takeIf { it.isNotBlank() }?.let {
+        add(QualityRow(stringResource(Res.string.quality_info_source), it))
+    }
+    (bitrateKbps ?: pcmDataRateKbps)?.let {
+        add(QualityRow(stringResource(Res.string.quality_info_bitrate), "$it kbps"))
+    }
+    listOfNotNull(codecLabel(mimeType), container).joinToString(" · ").takeIf { it.isNotEmpty() }?.let {
+        add(QualityRow(stringResource(Res.string.quality_info_codec), it))
+    }
+    val resolution = listOfNotNull(
+        bitDepth?.let { stringResource(Res.string.bit_depth, it) },
+        rateLabel(),
+    ).joinToString(" · ")
+    if (resolution.isNotEmpty()) {
+        add(QualityRow(stringResource(Res.string.quality_info_resolution), resolution))
+    }
+    channels?.let {
+        add(
+            QualityRow(
+                stringResource(Res.string.quality_info_channels),
+                when (it) {
+                    1 -> stringResource(Res.string.mono)
+                    2 -> stringResource(Res.string.stereo)
+                    else -> stringResource(Res.string.channel_count, it)
+                },
+            ),
+        )
+    }
+}
+
+/**
+ * The Lossless / Hi-Res Lossless chip. A tap grows it into the quality card:
+ * width and height run on two springs of different stiffness, which is what
+ * makes the surface wobble like jelly, while the body, rim, glow and blur
+ * settle in behind it. Everything animated is read in layout, layer or draw,
+ * so a frame of the morph never recomposes.
+ *
+ * [PlayerSettings.reduceAnimation] swaps the springs for short tweens, and
+ * [PlayerSettings.reduceDynamicBlur] drops the blur and makes the body solid.
+ */
+@Composable
+private fun QualityMorphChip(
+    text: String,
+    iconPainter: Painter,
+    stats: NerdStats.Snapshot,
+    modifier: Modifier = Modifier,
+) {
+    val reduceAnimation by PlayerSettings.reduceAnimation.collectAsStateWithLifecycle()
+    val reduceBlur by PlayerSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
+    val tint = LocalPlayerTint.current
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed && !reduceAnimation) 0.93f else 1f,
+        animationSpec = spring(dampingRatio = 0.4f, stiffness = Spring.StiffnessMedium),
+        label = "qualityChipPress",
+    )
+    val grow = remember { Animatable(0f) }
+    val rise = remember { Animatable(0f) }
+    var open by remember { mutableStateOf(false) }
+    var chipSize by remember { mutableStateOf(IntSize.Zero) }
+
+    val rows = stats.qualityRows()
+    val summary = stats.qualitySummary()
+    val detailsLabel = stringResource(Res.string.quality_info_details)
+    val cardHeight = QUALITY_CARD_HEADER + QUALITY_CARD_ROW * rows.size + QUALITY_CARD_FOOT
+
+    fun show() {
+        open = true
+        scope.launch {
+            launch {
+                grow.animateTo(
+                    1f,
+                    if (reduceAnimation) tween(200) else spring(dampingRatio = 0.58f, stiffness = 340f),
+                )
+            }
+            launch {
+                rise.animateTo(
+                    1f,
+                    if (reduceAnimation) tween(200) else spring(dampingRatio = 0.5f, stiffness = 220f),
+                )
+            }
+        }
+    }
+
+    fun hide() {
+        scope.launch {
+            val spec = if (reduceAnimation) tween<Float>(160) else spring<Float>(dampingRatio = 0.9f, stiffness = 520f)
+            val a = launch { grow.animateTo(0f, spec) }
+            val b = launch { rise.animateTo(0f, spec) }
+            a.join()
+            b.join()
+            open = false
+        }
+    }
+
+    Box(
+        modifier = modifier
+            // Measured without a height cap, same as the plain chip, so the
+            // size the morph starts from is the chip's real size.
+            .wrapContentHeight(align = Alignment.CenterVertically, unbounded = true)
+            .onSizeChanged { chipSize = it }
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+                // The card's own surface stands in for the chip while it is open.
+                alpha = if (grow.value > 0.001f || rise.value > 0.001f) 0f else 1f
+            }
+            .semantics { contentDescription = detailsLabel }
+            .clickable(interactionSource = interaction, indication = null) { if (!open) show() },
+    ) {
+        LosslessLabel(
+            text = text,
+            animated = true,
+            iconPainter = iconPainter,
+            chip = true,
+        )
+
+        if (open) {
+            val origin = remember { mutableStateOf<IntOffset?>(null) }
+            val positionProvider = remember { QualityPopupPosition { origin.value = it } }
+            val shape = remember(density) {
+                MorphShape(
+                    startPx = with(density) { 8.dp.toPx() },
+                    endPx = with(density) { 28.dp.toPx() },
+                    progress = { (grow.value + rise.value) / 2f },
+                )
+            }
+            Popup(
+                popupPositionProvider = positionProvider,
+                onDismissRequest = { hide() },
+                properties = PopupProperties(focusable = true),
+            ) {
+                val pulse = if (reduceAnimation) {
+                    null
+                } else {
+                    rememberInfiniteTransition(label = "qualityGlow").animateFloat(
+                        initialValue = 0.8f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(durationMillis = 2_200, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse,
+                        ),
+                        label = "qualityGlowPulse",
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .size(QUALITY_CARD_WIDTH + QUALITY_CARD_BLEED * 2, cardHeight + QUALITY_CARD_BLEED * 2)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) { hide() }
+                        .drawBehind {
+                            // Soft light spilling out from behind the card.
+                            val p = ((grow.value + rise.value) / 2f).coerceIn(0f, 1f)
+                            val o = origin.value
+                            if (p > 0f && o != null) {
+                                val center = Offset(
+                                    size.width / 2f + o.x * (1f - p),
+                                    size.height / 2f + o.y * (1f - p),
+                                )
+                                val radius = size.minDimension * 0.62f * (0.35f + 0.65f * p)
+                                drawCircle(
+                                    brush = Brush.radialGradient(
+                                        colors = listOf(
+                                            tint.copy(alpha = 0.34f * p * (pulse?.value ?: 1f)),
+                                            Color.Transparent,
+                                        ),
+                                        center = center,
+                                        radius = radius,
+                                    ),
+                                    radius = radius,
+                                    center = center,
+                                )
+                            }
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    // A blurred blob of the player tint behind the card: the
+                    // glass has something to be frosted over.
+                    if (!reduceBlur) {
+                        Box(
+                            modifier = Modifier
+                                .size(QUALITY_CARD_WIDTH * 0.7f, cardHeight * 0.6f)
+                                .graphicsLayer {
+                                    val p = ((grow.value + rise.value) / 2f).coerceIn(0f, 1f)
+                                    val o = origin.value
+                                    alpha = if (o == null) 0f else p * 0.55f
+                                    translationX = (o?.x ?: 0) * (1f - p)
+                                    translationY = (o?.y ?: 0) * (1f - p)
+                                }
+                                .blur(44.dp)
+                                .background(tint.copy(alpha = 0.5f), CircleShape),
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .layout { measurable, _ ->
+                                val chipW = chipSize.width.coerceAtLeast(1)
+                                val chipH = chipSize.height.coerceAtLeast(1)
+                                val w = androidx.compose.ui.util
+                                    .lerp(chipW.toFloat(), QUALITY_CARD_WIDTH.toPx(), grow.value)
+                                    .roundToInt().coerceAtLeast(chipW)
+                                val h = androidx.compose.ui.util
+                                    .lerp(chipH.toFloat(), cardHeight.toPx(), rise.value)
+                                    .roundToInt().coerceAtLeast(chipH)
+                                val placeable = measurable.measure(Constraints.fixed(w, h))
+                                layout(w, h) { placeable.place(0, 0) }
+                            }
+                            .graphicsLayer {
+                                val g = grow.value
+                                val r = rise.value
+                                val p = ((g + r) / 2f).coerceIn(0f, 1f)
+                                val o = origin.value
+                                // Hidden until the window is placed, so the first
+                                // frame never shows it in the wrong spot.
+                                alpha = if (o == null) 0f else 1f
+                                translationX = (o?.x ?: 0) * (1f - p)
+                                translationY = (o?.y ?: 0) * (1f - p)
+                                // Squash and stretch while one axis leads the other.
+                                scaleX = 1f + (r - g) * 0.05f
+                                scaleY = 1f + (g - r) * 0.05f
+                                shadowElevation = 30.dp.toPx() * p
+                                ambientShadowColor = tint
+                                spotShadowColor = tint
+                                this.shape = shape
+                                clip = true
+                            }
+                            .drawWithContent {
+                                val p = ((grow.value + rise.value) / 2f).coerceIn(0f, 1f)
+                                // Glass body: the chip's tint becomes a dark frosted pane.
+                                drawRect(
+                                    color = androidx.compose.ui.graphics.lerp(
+                                        tint.copy(alpha = 0.16f),
+                                        Color.Black.copy(alpha = if (reduceBlur) 0.94f else 0.66f),
+                                        p,
+                                    ),
+                                )
+                                drawRect(
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(
+                                            tint.copy(alpha = 0.22f * p),
+                                            Color.Transparent,
+                                            tint.copy(alpha = 0.10f * p),
+                                        ),
+                                    ),
+                                )
+                                drawContent()
+                                // Rim light: bright on the top-left edge, tinted on the opposite one.
+                                drawOutline(
+                                    outline = shape.createOutline(size, layoutDirection, this),
+                                    brush = Brush.linearGradient(
+                                        colors = listOf(
+                                            Color.White.copy(alpha = 0.6f),
+                                            Color.White.copy(alpha = 0.06f),
+                                            tint.copy(alpha = 0.45f),
+                                        ),
+                                        start = Offset.Zero,
+                                        end = Offset(size.width, size.height),
+                                    ),
+                                    alpha = p,
+                                    style = Stroke(width = 1.2.dp.toPx()),
+                                )
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        // The chip's own label, fading out as the card opens.
+                        Box(
+                            modifier = Modifier.graphicsLayer {
+                                val p = ((grow.value + rise.value) / 2f).coerceIn(0f, 1f)
+                                alpha = (1f - p * 4f).coerceIn(0f, 1f)
+                            },
+                        ) {
+                            LosslessLabel(
+                                text = text,
+                                animated = true,
+                                iconPainter = iconPainter,
+                            )
+                        }
+                        // The card's content, coming into focus as it fades in.
+                        QualityCardContent(
+                            title = text,
+                            subtitle = summary,
+                            iconPainter = iconPainter,
+                            rows = rows,
+                            tint = tint,
+                            modifier = Modifier
+                                .requiredSize(QUALITY_CARD_WIDTH, cardHeight)
+                                .graphicsLayer {
+                                    val p = ((grow.value + rise.value) / 2f).coerceIn(0f, 1f)
+                                    val appear = ((p - 0.35f) / 0.45f).coerceIn(0f, 1f)
+                                    alpha = appear
+                                    val blurPx = (1f - appear) * 16.dp.toPx()
+                                    renderEffect = if (!reduceBlur && blurPx > 0.5f) {
+                                        BlurEffect(blurPx, blurPx, TileMode.Decal)
+                                    } else {
+                                        null
+                                    }
+                                },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Logo, title and summary on top; the spec rows pinned to the bottom. */
+@Composable
+private fun QualityCardContent(
+    title: String,
+    subtitle: String,
+    iconPainter: Painter,
+    rows: List<QualityRow>,
+    tint: Color,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.padding(horizontal = 24.dp)) {
+        Spacer(Modifier.height(24.dp))
+        Icon(
+            painter = iconPainter,
+            contentDescription = null,
+            tint = Color.White.copy(alpha = 0.92f),
+            modifier = Modifier.size(width = 54.dp, height = 29.dp),
+        )
+        Spacer(Modifier.height(14.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = Color.White,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (subtitle.isNotEmpty()) {
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal),
+                color = tint.copy(alpha = 0.78f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Spacer(Modifier.weight(1f))
+        rows.forEachIndexed { index, row ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(QUALITY_CARD_ROW)
+                    .drawBehind {
+                        if (index < rows.lastIndex) {
+                            drawLine(
+                                color = Color.White.copy(alpha = 0.1f),
+                                start = Offset(0f, size.height),
+                                end = Offset(size.width, size.height),
+                                strokeWidth = 1.dp.toPx(),
+                            )
+                        }
+                    },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = row.label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = tint.copy(alpha = 0.7f),
+                    maxLines = 1,
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = row.value,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    color = Color.White,
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        Spacer(Modifier.height(QUALITY_CARD_FOOT))
     }
 }
 
