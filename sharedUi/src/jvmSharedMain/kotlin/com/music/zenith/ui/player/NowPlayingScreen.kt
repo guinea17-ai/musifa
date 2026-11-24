@@ -3633,7 +3633,9 @@ fun NowPlayingScreen(
                                 // blur the playing Canvas live themselves, and the
                                 // deck's glass under them would be a second live blur
                                 // of the same video for a deck nobody can see.
-                                if (reduceDynamicBlur || !renderEffectBlurSupported || overlayOpen.value) {
+                                if (reduceDynamicBlur || !renderEffectBlurSupported ||
+                                    (overlayOpen.value && !qualityDetail.open)
+                                ) {
                                     // A real backdrop RenderEffect is unavailable on
                                     // older Android versions and intentionally skipped
                                     // when dynamic blur is reduced. Retain the deck's
