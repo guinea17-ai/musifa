@@ -4416,12 +4416,20 @@ private fun ZenithApp(
                             .graphicsLayer { alpha = topFadeAlpha },
                     )
                 } else {
+                    // The search filter control lives in the page, under this app-level
+                    // strip, so the strip blurred it. While the control is up the page
+                    // frosts its own header band, so the strip steps aside.
+                    val topFadeBlurHide by animateFloatAsState(
+                        targetValue = if (searchFilterBarShown) 0f else 1f,
+                        animationSpec = tween(durationMillis = 220),
+                        label = "topFadeBlurSearchFilter",
+                    )
                     TopFadeBlur(
                         hazeState = hazeState,
                         pageColor = chromePageColor,
                         modifier = Modifier
                             .align(Alignment.TopCenter)
-                            .graphicsLayer { alpha = topFadeAlpha },
+                            .graphicsLayer { alpha = topFadeAlpha * topFadeBlurHide },
                     )
                 }
 
