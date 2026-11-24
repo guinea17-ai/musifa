@@ -720,6 +720,18 @@ object AppSettings {
     val directSourceStream = MutableStateFlow(false)
 
     /**
+     * The listener says their account has YouTube Premium: take the signed-in
+     * route that reaches Premium's ~256kbps Opus (itag 774) instead of the
+     * anonymous 251. See
+     * [InnerTubeXResolver.extract][com.music.zenith.data.innertube.InnerTubeXResolver.extract].
+     *
+     * Off by default and asked rather than detected: nothing InnerTubeX
+     * exposes confirms the entitlement, and claiming it for an account
+     * without Premium only costs that account the faster anonymous route.
+     */
+    val youtubePremiumAudio = MutableStateFlow(false)
+
+    /**
      * Widens stereo output via [com.music.zenith.playback.SpatialAudioProcessor],
      * a stereo widening + cross-feed effect running inside ExoPlayer's own
      * pipeline. Not true object-based spatial audio — YouTube only ever hands
@@ -1563,6 +1575,7 @@ object AppSettings {
         loudnessOffOnSpeaker.value = prefs.getBoolean(KEY_LOUDNESS_OFF_ON_SPEAKER, true)
         dolbyAtmos.value = prefs.getBoolean(KEY_DOLBY_ATMOS, true)
         directSourceStream.value = prefs.getBoolean(KEY_DIRECT_SOURCE_STREAM, false)
+        youtubePremiumAudio.value = prefs.getBoolean(KEY_YOUTUBE_PREMIUM_AUDIO, false)
         spatialAudio.value = prefs.getBoolean(KEY_SPATIAL_AUDIO, false)
         spatialAudioByTrack.value = readSpatialAudioByTrack()
         equalizerEnabled.value = prefs.getBoolean(KEY_EQ_ENABLED, false)
@@ -1985,6 +1998,13 @@ object AppSettings {
     fun setDirectSourceStream(value: Boolean) {
         directSourceStream.value = value
         prefs.edit().putBoolean(KEY_DIRECT_SOURCE_STREAM, value).apply()
+    }
+
+    fun setYoutubePremiumAudio(value: Boolean) {
+        youtubePremiumAudio.value = value
+        prefs.edit().putBoolean(KEY_YOUTUBE_PREMIUM_AUDIO, value).apply()
+        // Remembered URLs were picked under the old route; the next play asks again.
+        com.music.zenith.data.innertube.StreamResolver.forgetResolved()
     }
 
     fun setSpatialAudio(value: Boolean) {
@@ -3294,6 +3314,7 @@ object AppSettings {
     private const val KEY_LOUDNESS_OFF_ON_SPEAKER = "loudness_off_on_speaker"
     private const val KEY_DOLBY_ATMOS = "dolby_atmos"
     private const val KEY_DIRECT_SOURCE_STREAM = "direct_source_stream"
+    private const val KEY_YOUTUBE_PREMIUM_AUDIO = "youtube_premium_audio"
     private const val KEY_SPATIAL_AUDIO = "spatial_audio"
     private const val KEY_SPATIAL_AUDIO_BY_TRACK = "spatial_audio_by_track"
     private const val MAX_SPATIAL_TRACKS = 5000
