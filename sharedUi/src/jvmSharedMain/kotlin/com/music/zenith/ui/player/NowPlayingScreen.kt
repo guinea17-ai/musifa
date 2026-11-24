@@ -1594,8 +1594,10 @@ fun NowPlayingScreen(
     // [QUEUE_CARRY_FRACTION] has to fall back to 0 just as surely as one that
     // carried has to finish reaching 1.
     var queueReleased by remember { mutableIntStateOf(0) }
+    var queueReleaseAlpha by remember { mutableFloatStateOf(1f) }
     LaunchedEffect(queueOpen, queueDragging, queueReleased) {
         if (queueDragging) return@LaunchedEffect
+        if (!queueOpen) queueReleaseAlpha = 1f
         val target = if (queueOpen) 1f else 0f
         val from = queueSlide.floatValue
         if (from == target) return@LaunchedEffect
@@ -3299,7 +3301,7 @@ fun NowPlayingScreen(
                                         // ke backdrop, tanpa bercampur dengan cover statis.
                                         // Live blur off: klip bertahan utuh sampai blur
                                         // frame beku-nya siap, lalu melebur ke sana.
-                                        if (spotifyFrameOnly && (lyricsOpen || queueOpen)) spotifyFrameHandoff
+                                        if (spotifyFrameOnly && (lyricsOpen || queueOpen)) minOf(spotifyFrameHandoff, queueReleaseAlpha)
                                         else 1f - smootherStep(((p() - 0.05f) / 0.55f).coerceIn(0f, 1f))
                                     } else (1f - 2f * p()).coerceIn(0f, 1f)
                                     ) * dockFade() * clipMixFade.value
@@ -3888,6 +3890,11 @@ fun NowPlayingScreen(
                                                         )
                                                         if (open) queueControlsOpen = true
                                                         queueOpen = open
+                                                    }
+                                                    queueReleaseAlpha = if (open) {
+                                                        1f - smootherStep(((queueSlide.floatValue - 0.05f) / 0.55f).coerceIn(0f, 1f))
+                                                    } else {
+                                                        1f
                                                     }
                                                     queueReleased++
                                                 },
