@@ -337,6 +337,12 @@ private const val SPOTIFY_CANVAS_RESUME_DELAY_MS = 1_000L
 /** Tinggi dek kaca Spotify Canvas sebagai bagian dari layar; sama dengan lapisan kaca hidupnya. */
 private const val SPOTIFY_DECK_HEIGHT_FRACTION = 0.56f
 
+/** Tinggi bayangan bawah (bagian dari layar) di belakang judul dan bar progres saat dek Canvas disembunyikan. */
+private const val SPOTIFY_HIDDEN_SCRIM_HEIGHT_FRACTION = 0.34f
+
+/** Kekuatan maksimum bayangan di tepi bawah layar. */
+private const val SPOTIFY_HIDDEN_SCRIM_MAX_ALPHA = 0.72f
+
 /** Height of the seek bar that stays on screen once Spotify Canvas' control deck is hidden. */
 /** Seberapa jauh bar progres, menit, dan label kualitas dinaikkan dari tepi bawah layar. */
 private val SPOTIFY_MINI_SCRUBBER_LIFT = 16.dp
@@ -3702,6 +3708,39 @@ fun NowPlayingScreen(
                         Modifier.matchParentSize()
                             .graphicsLayer { alpha = spotifyCanvasDim.value * liveDeckShare() * deckDimFollow() }
                             .background(Color.Black),
+                    )
+                }
+
+                // Dek disembunyikan: judul, artis, dan bar progres melayang langsung di atas
+                // video. Gradient gelap di kaki layar menjaga teksnya terbaca tanpa menutupi
+                // videonya. Muncul saat dek menutup, hilang saat dek kembali (dim 50% di atas
+                // sudah mengambil alih), dan alpha dibaca di fase draw supaya tidak recompose.
+                val spotifyHiddenScrim = animateFloatAsState(
+                    targetValue = if (spotifyCanvasPresentation && !spotifyCanvasControlsOpen &&
+                        !lyricsOpen && !queueOpen
+                    ) {
+                        1f
+                    } else {
+                        0f
+                    },
+                    animationSpec = tween(SPOTIFY_CANVAS_CONTROLS_ANIMATION_MS),
+                    label = "spotifyHiddenScrim",
+                )
+                val spotifyHiddenScrimShowing by remember { derivedStateOf { spotifyHiddenScrim.value > 0f } }
+                if (spotifyHiddenScrimShowing) {
+                    Box(
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .fillMaxHeight(SPOTIFY_HIDDEN_SCRIM_HEIGHT_FRACTION)
+                            .graphicsLayer { alpha = spotifyHiddenScrim.value }
+                            .background(
+                                Brush.verticalGradient(
+                                    0.00f to Color.Transparent,
+                                    0.45f to Color.Black.copy(alpha = SPOTIFY_HIDDEN_SCRIM_MAX_ALPHA * 0.45f),
+                                    1.00f to Color.Black.copy(alpha = SPOTIFY_HIDDEN_SCRIM_MAX_ALPHA),
+                                ),
+                            ),
                     )
                 }
 
