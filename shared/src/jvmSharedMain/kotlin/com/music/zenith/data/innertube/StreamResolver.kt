@@ -807,6 +807,11 @@ object StreamResolver {
      */
     suspend fun signatureTimestamp(videoId: String): Int? {
         cachedSignatureTimestamp?.let { return it }
+        // NewPipe fetches the player script through the downloader [init]
+        // installs. With Direct Source Stream a track plays from an addon and
+        // YouTube is never resolved, so without this the timestamp parse
+        // failed and no play reached the account's history.
+        init
         return runCatching {
             jsPlayerManager { YoutubeJavaScriptPlayerManager.getSignatureTimestamp(videoId) }
         }
