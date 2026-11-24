@@ -1745,6 +1745,7 @@ fun NowPlayingScreen(
     // cover (videoMode). Lagu video dengan cover diam (still video covers) atau
     // tanpa dukungan video kini ikut pengaturan full-bleed seperti lagu biasa.
     val fullBleedArt = fullBleedSetting && !(videoMode && canvas == null)
+    SideEffect { CanvasFadeTuning.fullBleed.value = fullBleedArt }
     // Full-bleed is a phone idiom. What the width has to rule out is a player
     // running a foot wider than the column of controls under it — edge to edge
     // meaning "a picture, and separately some controls" rather than "the
@@ -2074,7 +2075,7 @@ fun NowPlayingScreen(
     } else 0f
     heroClipGeometry.portrait = clipPortrait
     heroClipGeometry.bannerHeightPx = with(density) {
-        heroHeight.toPx() + CanvasFadeTuning.offsetDp.floatValue.coerceAtLeast(0f).dp.toPx()
+        heroHeight.toPx() + CanvasFadeTuning.offset().coerceAtLeast(0f).dp.toPx()
     }
     heroClipGeometry.fade = if (clipPortrait) clipFadeFraction else HERO_FADE_FRACTION
     val statusBarTop = stableStatusBarInsets().asPaddingValues().calculateTopPadding()
@@ -3211,7 +3212,7 @@ fun NowPlayingScreen(
                             seam = {
                                 with(density) {
                                     heroHeight.toPx() +
-                                        CanvasFadeTuning.offsetDp.floatValue.coerceAtLeast(0f).dp.toPx()
+                                        CanvasFadeTuning.offset().coerceAtLeast(0f).dp.toPx()
                                 }
                             },
                             modifier = Modifier.graphicsLayer {
@@ -3373,7 +3374,7 @@ fun NowPlayingScreen(
                                     if (growBox) {
                                         Modifier.fillMaxWidth().layout { measurable, constraints ->
                                             val full = constraints.maxHeight
-                                            val hero = (heroHeight + CanvasFadeTuning.offsetDp.floatValue.coerceAtLeast(0f).dp)
+                                            val hero = (heroHeight + CanvasFadeTuning.offset().coerceAtLeast(0f).dp)
                                                 .roundToPx().coerceIn(0, full)
                                             val h = (hero + (full - hero) * p().coerceIn(0f, 1f)).roundToInt()
                                             val placeable = measurable.measure(
@@ -3383,7 +3384,7 @@ fun NowPlayingScreen(
                                         }
                                     } else if (clipFullscreen || clipPortrait || clipFillsPanels) Modifier.fillMaxSize()
                                     else Modifier.fillMaxWidth().height(
-                                        heroHeight + CanvasFadeTuning.offsetDp.floatValue.coerceAtLeast(0f).dp,
+                                        heroHeight + CanvasFadeTuning.offset().coerceAtLeast(0f).dp,
                                     ),
                                 )
                                 .drawWithContent {
@@ -4240,7 +4241,7 @@ fun NowPlayingScreen(
                                     size = Size(
                                         playerBounds.width.toFloat(),
                                         (stillBottomPx().takeIf { it > 0f } ?: heroHeight.roundToPx().toFloat()) +
-                                            CanvasFadeTuning.offsetDp.floatValue.coerceAtLeast(0f).dp.toPx(),
+                                            CanvasFadeTuning.offset().coerceAtLeast(0f).dp.toPx(),
                                     ),
                                 )
                             }

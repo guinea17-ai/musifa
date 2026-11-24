@@ -90,10 +90,20 @@ object CanvasFadeTuning {
         ControlLayoutTuning.clearOverrides()
     }
 
-    const val DEFAULT_HEIGHT_SCALE = 0.52f
+    /** Nilai canvas saat sampul layar penuh aktif: tetap pakai setelan lama. */
+    const val FULL_BLEED_HEIGHT_SCALE = 0.52f
+    const val FULL_BLEED_OFFSET_DP = 80f
+
+    /** Sampul layar penuh aktif? Dipasang oleh NowPlayingScreen. */
+    val fullBleed = mutableStateOf(false)
+
+    /** Geser band fade efektif: setelan lama saat sampul layar penuh aktif. */
+    fun offset(): Float = if (fullBleed.value) FULL_BLEED_OFFSET_DP else offsetDp.floatValue
+
+    const val DEFAULT_HEIGHT_SCALE = 0.40f
     const val DEFAULT_CURVE = 0.06f
     const val DEFAULT_POWER = 1.37f
-    const val DEFAULT_OFFSET_DP = 80f
+    const val DEFAULT_OFFSET_DP = 30.56f
     const val DEFAULT_CURVE_EXP = 4f
     const val DEFAULT_BLUR_SCALE = 1.95f
 
@@ -135,7 +145,8 @@ object CanvasFadeTuning {
     }
 
     /** Tinggi fade efektif yang dipakai klip. */
-    fun effectiveHeight(): Float = fastCurve(heightScale.floatValue, 2f)
+    fun effectiveHeight(): Float =
+        fastCurve(if (fullBleed.value) FULL_BLEED_HEIGHT_SCALE else heightScale.floatValue, 2f)
 
     /** Lekuk V efektif yang dipakai klip. */
     fun effectiveCurve(): Float = fastCurve(curve.floatValue, 3f)
@@ -146,9 +157,10 @@ object CanvasFadeTuning {
             heightScale.floatValue,
             curve.floatValue,
             power.floatValue,
-            offsetDp.floatValue,
+            offset(),
             curveExp.floatValue,
             blurScale.floatValue,
+            fullBleed.value,
         )
 }
 
@@ -200,7 +212,7 @@ internal object ControlLayoutTuning {
         ControlProfile(transportTop = 24.10f, artExtra = 8.33f, titleExtra = 19.72f),
         ControlProfile(transportTop = 21.25f, volumeBottom = 18.82f, artExtra = 20.89f, titleExtra = 41.11f),
         ControlProfile(artExtra = -4.69f, titleExtra = 16.11f),
-        ControlProfile(artExtra = 20.89f, titleExtra = 44.72f),
+        ControlProfile(artExtra = 20.89f, titleExtra = 41.72f),
     )
 
     private val profiles = Array(4) { mutableStateOf(DEFAULTS[it]) }

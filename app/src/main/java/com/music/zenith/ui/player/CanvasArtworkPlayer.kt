@@ -886,7 +886,7 @@ private fun TextureView.applyContentTransform(
     val matrix = contentMatrix(width, height, clipAspect, contentMode, alignPortraitTop, fill)?.also { m ->
         // Geser Y positif: video ikut membesar ke bawah (zoom dari atas) agar
         // ada gambar yang bisa dilarutkan di bawah dasar klip aslinya.
-        val extra = CanvasFadeTuning.offsetDp.floatValue * resources.displayMetrics.density
+        val extra = CanvasFadeTuning.offset() * resources.displayMetrics.density
         if (extra > 0.5f && alignPortraitTop &&
             contentMode == CanvasContentMode.FIT_PORTRAIT && clipAspect < 1f
         ) {
@@ -990,7 +990,7 @@ private fun TextureView.setBottomFade(
     endPx: Float?,
     blurPx: Float = 0f,
 ) {
-    val offsetPx = CanvasFadeTuning.offsetDp.floatValue * resources.displayMetrics.density
+    val offsetPx = CanvasFadeTuning.offset() * resources.displayMetrics.density
     val endY = ((endPx ?: bounds.height.toFloat()) + offsetPx)
         .coerceIn(0f, bounds.height.toFloat())
     // The blur lives on the view's own RenderNode, like the fade: a Compose
@@ -1118,9 +1118,9 @@ private class AppliedLook {
     ): Boolean {
         if (clipAspect == aspect && contentMode == mode && alignPortraitTop == alignTop &&
             viewWidth == width && viewHeight == height && fill == fillT &&
-            CanvasFadeTuning.offsetDp.floatValue == offsetT
+            CanvasFadeTuning.offset() == offsetT
         ) return false
-        offsetT = CanvasFadeTuning.offsetDp.floatValue
+        offsetT = CanvasFadeTuning.offset()
         aspect = clipAspect
         mode = contentMode
         alignTop = alignPortraitTop
