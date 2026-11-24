@@ -4093,6 +4093,37 @@ fun NowPlayingScreen(
                             (if (!heroMode && !videoMode && !lyricStripEnabled && !titleSeparate) CARD_TITLE_DROP else 0.dp) +
                                 (if (videoMode) 0.dp else ControlLayoutTuning.titleExtra(hideVolumeBar, lyricStripEnabled))
                         val titleHeroDrop = if (titleSeparate) 0.dp else heroTitleDrop
+                        // Setelah tulisan "Lyrics not available" memudar, slot barisnya
+                        // kosong. Judul, artis, like, dan menu turun halus mengisi ruang
+                        // itu. Waktunya sama dengan LyricsUnavailableLine: tahan lalu
+                        // pudar, sehingga turunnya dimulai saat tulisan mulai menghilang.
+                        // Ubah lyricsGoneTitleDrop untuk mengatur jarak turunnya.
+                        val lyricsGoneTitleDrop = 22.dp
+                        var lyricsHintGone by remember { mutableStateOf(false) }
+                        val lyricsHintDisplayedEmpty = lyricsTranslation.displayedLyrics.isEmpty()
+                        LaunchedEffect(
+                            song.videoId,
+                            lyricStripEnabled,
+                            lyricsUnavailable,
+                            lyricsHintDisplayedEmpty,
+                            lyricsOpen,
+                        ) {
+                            lyricsHintGone = false
+                            if (lyricStripEnabled && lyricsUnavailable && lyricsHintDisplayedEmpty && !lyricsOpen) {
+                                delay(LYRICS_UNAVAILABLE_HOLD_MS)
+                                lyricsHintGone = true
+                            }
+                        }
+                        // Dibaca saat placement (bukan composition) lewat State, supaya
+                        // animasinya tidak merecompose seluruh pemain tiap frame.
+                        val lyricsGone = animateFloatAsState(
+                            targetValue = if (lyricsHintGone) 1f else 0f,
+                            animationSpec = tween(
+                                durationMillis = LYRICS_UNAVAILABLE_FADE_MS,
+                                easing = FastOutSlowInEasing,
+                            ),
+                            label = "lyricsGoneTitleDrop",
+                        )
                         // Functions of the collapse, called at placement and measure
                         // — see [p]. Composition never reads them.
                         fun artSize(): Dp = lerp(fullArt, THUMB_SIZE, p())
@@ -4102,7 +4133,12 @@ fun NowPlayingScreen(
                         // hard against the left edge with the credits beside it.
                         fun artStart(): Dp = lerp((maxWidth - fullArt) / 2, 0.dp, p())
                         fun regularTitleTop(): Dp =
-                            lerp(groupTop + slotArt + ART_TITLE_GAP + titleHeroDrop + cardTitleDrop, 0.dp, p())
+                            lerp(
+                                groupTop + slotArt + ART_TITLE_GAP + titleHeroDrop + cardTitleDrop +
+                                    lyricsGoneTitleDrop * lyricsGone.value,
+                                0.dp,
+                                p(),
+                            )
                         // Once Spotify's control deck has left, keep the only remaining
                         // player chrome against the bottom edge instead of stranding it
                         // where the artwork's title normally sits near mid-screen.
