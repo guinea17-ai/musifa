@@ -2205,6 +2205,7 @@ internal fun QualityDetailPopup(
         modifier = modifier,
         titleGap = 2.dp,
         maxWidth = QUALITY_POPUP_WIDTH,
+        menuJelly = true,
         header = {
             Box(
                 modifier = Modifier

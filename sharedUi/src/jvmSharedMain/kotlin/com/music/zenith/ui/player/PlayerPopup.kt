@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -94,12 +95,17 @@ internal fun PlayerPopup(
     maxWidth: Dp = POPUP_MAX_WIDTH,
     /** Drawn above the title, for a popup that opens with a logo. */
     header: (@Composable ColumnScope.() -> Unit)? = null,
+    /** Drags the card with the ⋯ menu's jelly instead of the plain lean. */
+    menuJelly: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val reduceDynamicBlur by PlayerSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val reduceAnimation by PlayerSettings.reduceAnimation.collectAsStateWithLifecycle()
     val frost = LocalPlayerFrost.current
     val density = LocalDensity.current
+    val jellyScope = rememberCoroutineScope()
+    val jelly = remember(jellyScope) { PopupJelly(jellyScope) }
+    jelly.reduceMotion = reduceAnimation
 
     // The touch that opened this, taken once.
     val origin = remember { PopupOrigin.take() }
@@ -139,7 +145,7 @@ internal fun PlayerPopup(
     var touching by remember { mutableStateOf(false) }
     var cardSize by remember { mutableStateOf(IntSize.Zero) }
     val leanX by animateFloatAsState(
-        targetValue = if (touching && cardSize.width > 0) {
+        targetValue = if (!menuJelly && touching && cardSize.width > 0) {
             ((touch.x / cardSize.width - 0.5f) * 2f).coerceIn(-1f, 1f)
         } else {
             0f
@@ -148,7 +154,7 @@ internal fun PlayerPopup(
         label = "playerPopupLeanX",
     )
     val leanY by animateFloatAsState(
-        targetValue = if (touching && cardSize.height > 0) {
+        targetValue = if (!menuJelly && touching && cardSize.height > 0) {
             ((touch.y / cardSize.height - 0.5f) * 2f).coerceIn(-1f, 1f)
         } else {
             0f
@@ -201,6 +207,7 @@ internal fun PlayerPopup(
                     applyPopupMorph(progress.value, from, b, POPUP_CORNER.toPx())
                     translationX += leanX * leanMax.toPx()
                     translationY += leanY * leanMax.toPx()
+                    if (menuJelly) applyPopupJelly(jelly)
                 }
                 .clip(POPUP_SHAPE)
                 .then(
@@ -218,6 +225,9 @@ internal fun PlayerPopup(
                 .onSizeChanged { cardSize = it }
                 .pointerInput(Unit) {
                     awaitPointerEventScope {
+                        var jellyHeld = false
+                        val jellyDead = 6.dp.toPx()
+                        val jellyMaxShift = 12.dp.toPx()
                         while (true) {
                             val event = awaitPointerEvent(PointerEventPass.Initial)
                             val finger = event.changes.firstOrNull { it.pressed }
@@ -226,6 +236,25 @@ internal fun PlayerPopup(
                                 touching = true
                             } else {
                                 touching = false
+                            }
+                            if (menuJelly) {
+                                if (finger != null) {
+                                    if (!jellyHeld) {
+                                        jellyHeld = true
+                                        jelly.begin(finger.position)
+                                    } else {
+                                        jelly.move(
+                                            position = finger.position,
+                                            width = cardSize.width.toFloat(),
+                                            height = cardSize.height.toFloat(),
+                                            dead = jellyDead,
+                                            maxShift = jellyMaxShift,
+                                        )
+                                    }
+                                } else if (jellyHeld) {
+                                    jellyHeld = false
+                                    jelly.finish()
+                                }
                             }
                         }
                     }
